@@ -21,36 +21,69 @@ export const handler = async (event) => {
   try { body = JSON.parse(event.body || "{}"); }
   catch { return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid JSON" }) }; }
 
-  const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-  const model   = process.env.AI_MODEL || "claude-haiku-4-5";
+  const baseURL    = process.env.ANTHROPIC_BASE_URL || "";
+  const model      = process.env.AI_MODEL || "claude-haiku-4-5";
+  const useDeepSeek = !!baseURL; // 有自定义 base URL 就走 OpenAI 兼容格式（DeepSeek）
 
   let res;
   try {
-    res = await fetch(`${baseURL}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type":      "application/json",
-        "x-api-key":         ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: body.max_tokens || 1000,
-        system:     body.system,
-        messages:   body.messages,
-      }),
-    });
+    if (useDeepSeek) {
+      // ── DeepSeek / OpenAI 兼容格式 ──────────────────────────────────────
+      const openaiMessages = [];
+      if (body.system) openaiMessages.push({ role: "system", content: body.system });
+      (body.messages || []).forEach(m => openaiMessages.push(m));
+
+      res = await fetch(`${baseURL}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type":  "application/json",
+          "Authorization": `Bearer ${ANTHROPIC_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: body.max_tokens || 1000,
+          messages:   openaiMessages,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { statusCode: res.status, headers, body: JSON.stringify({
+          error: data?.error?.message || JSON.stringify(data),
+        })};
+      }
+      // 把 OpenAI 格式响应转换成 Anthropic 格式，前端无需改动
+      const text = data.choices?.[0]?.message?.content || "";
+      return { statusCode: 200, headers, body: JSON.stringify({
+        content: [{ type: "text", text }],
+      })};
+
+    } else {
+      // ── 原生 Anthropic 格式 ─────────────────────────────────────────────
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type":      "application/json",
+          "x-api-key":         ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: body.max_tokens || 1000,
+          system:     body.system,
+          messages:   body.messages,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { statusCode: res.status, headers, body: JSON.stringify({
+          error: data?.error?.message || JSON.stringify(data),
+        })};
+      }
+      return { statusCode: 200, headers, body: JSON.stringify(data) };
+    }
   } catch (fetchErr) {
     return { statusCode: 502, headers, body: JSON.stringify({ error: `网络请求失败: ${fetchErr.message}` }) };
   }
-
-  const data = await res.json();
-  if (!res.ok) {
-    // 把 API 报错原文透传给前端，方便排查模型名/key 问题
-    return { statusCode: res.status, headers, body: JSON.stringify({
-      error: data?.error?.message || JSON.stringify(data),
-      _debug: { model, baseURL: baseURL.replace(/\/\/.*@/, "//***@") },
-    })};
-  }
-  return { statusCode: 200, headers, body: JSON.stringify(data) };
 };

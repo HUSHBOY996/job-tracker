@@ -74,20 +74,11 @@ const IMAP_HOSTS = {
 
 // ── 服务端调用 Claude API 解析单封邮件 ────────────────────────────────────
 async function parseWithClaude(fullText, apiKey, hintJobRelated = false) {
-  // 支持自定义 base URL（兼容 DeepSeek 等兼容 Anthropic 格式的接口）
-  const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-  const model   = process.env.AI_MODEL || "claude-haiku-4-5";
-  const res = await fetch(`${baseURL}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type":      "application/json",
-      "x-api-key":         apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 600,
-      system: `你是求职邮件解析助手。只返回 JSON，不输出任何其他文字。
+  const baseURL    = process.env.ANTHROPIC_BASE_URL || "";
+  const model      = process.env.AI_MODEL || "claude-haiku-4-5";
+  const useDeepSeek = !!baseURL;
+
+  const systemPrompt = `你是求职邮件解析助手。只返回 JSON，不输出任何其他文字。
 判断标准（宽松识别，宁可误判不可漏判）：
 - isJobRelated = true 的情况：面试、笔试、一面、二面、三面、终面、HR面、offer、录用、
   入职、实习、校招、社招、招聘、求职、应聘、测评、assessment、interview、
@@ -104,21 +95,64 @@ async function parseWithClaude(fullText, apiKey, hintJobRelated = false) {
   "salary": "薪资或null",
   "confidence": 0到1的数字,
   "summary": "一句话概括邮件核心内容"
-}`,
-      messages: [{ role: "user", content: hintJobRelated
-        ? `【重要提示：此邮件主题或内容包含明确的求职/招聘关键词，isJobRelated 必须返回 true】\n\n邮件内容：\n\n${fullText}`
-        : `邮件内容：\n\n${fullText}` }],
-    }),
-  });
+}`;
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Claude API ${res.status}: ${err.slice(0, 200)}`);
+  const userContent = hintJobRelated
+    ? `【重要提示：此邮件主题或内容包含明确的求职/招聘关键词，isJobRelated 必须返回 true】\n\n邮件内容：\n\n${fullText}`
+    : `邮件内容：\n\n${fullText}`;
+
+  let res;
+  if (useDeepSeek) {
+    // ── DeepSeek / OpenAI 兼容格式 ────────────────────────────────────────
+    res = await fetch(`${baseURL}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 600,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: userContent },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`DeepSeek API ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const raw  = data.choices?.[0]?.message?.content || "{}";
+    return JSON.parse(raw.replace(/```json|```/g, "").trim());
+
+  } else {
+    // ── 原生 Anthropic 格式 ───────────────────────────────────────────────
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userContent }],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Claude API ${res.status}: ${err.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const raw  = data.content?.[0]?.text || "{}";
+    return JSON.parse(raw.replace(/```json|```/g, "").trim());
   }
-
-  const data = await res.json();
-  const raw  = data.content?.[0]?.text || "{}";
-  return JSON.parse(raw.replace(/```json|```/g, "").trim());
 }
 
 // ── 主 Handler ─────────────────────────────────────────────────────────────
