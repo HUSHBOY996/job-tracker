@@ -1422,8 +1422,14 @@ const AIAgent = ({ setPage }) => {
           system:"你是求职AI助手，帮助求职者处理求职事务：解析JD、面试准备、简历优化等。用中文回答，专业友好。",
           messages:newMessages.slice(-10).map(m => ({ role:m.role, content:m.content })) }) });
       const data = await res.json();
-      setMessages(prev => [...prev, { id:Date.now(), role:"assistant", content:data.content?.[0]?.text||"抱歉，请稍后重试。" }]);
-    } catch { setMessages(prev => [...prev, { id:Date.now(), role:"assistant", content:"网络错误，请稍后重试 😢" }]); }
+      if (data.content?.[0]?.text) {
+        setMessages(prev => [...prev, { id:Date.now(), role:"assistant", content:data.content[0].text }]);
+      } else {
+        // 把实际错误信息显示出来，方便排查
+        const errMsg = data.error || (data.type==="error" && data.error?.message) || JSON.stringify(data);
+        setMessages(prev => [...prev, { id:Date.now(), role:"assistant", content:`⚠️ API错误：${errMsg}` }]);
+      }
+    } catch(e) { setMessages(prev => [...prev, { id:Date.now(), role:"assistant", content:`网络错误：${e.message} 😢` }]); }
     setLoading(false);
   };
   return (
