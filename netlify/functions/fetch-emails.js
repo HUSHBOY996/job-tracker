@@ -76,7 +76,7 @@ const IMAP_HOSTS = {
 async function parseWithClaude(fullText, apiKey, hintJobRelated = false) {
   // 支持自定义 base URL（兼容 DeepSeek 等兼容 Anthropic 格式的接口）
   const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-  const model   = process.env.AI_MODEL || "claude-sonnet-4-20250514";
+  const model   = process.env.AI_MODEL || "claude-haiku-4-5";
   const res = await fetch(`${baseURL}/v1/messages`, {
     method: "POST",
     headers: {

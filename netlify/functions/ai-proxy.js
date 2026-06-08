@@ -22,23 +22,35 @@ export const handler = async (event) => {
   catch { return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid JSON" }) }; }
 
   const baseURL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
-  const model   = process.env.AI_MODEL || "claude-haiku-4-5-20251001";
+  const model   = process.env.AI_MODEL || "claude-haiku-4-5";
 
-  const res = await fetch(`${baseURL}/v1/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type":      "application/json",
-      "x-api-key":         ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: body.max_tokens || 1000,
-      system:     body.system,
-      messages:   body.messages,
-    }),
-  });
+  let res;
+  try {
+    res = await fetch(`${baseURL}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: body.max_tokens || 1000,
+        system:     body.system,
+        messages:   body.messages,
+      }),
+    });
+  } catch (fetchErr) {
+    return { statusCode: 502, headers, body: JSON.stringify({ error: `网络请求失败: ${fetchErr.message}` }) };
+  }
 
   const data = await res.json();
-  return { statusCode: res.status, headers, body: JSON.stringify(data) };
+  if (!res.ok) {
+    // 把 API 报错原文透传给前端，方便排查模型名/key 问题
+    return { statusCode: res.status, headers, body: JSON.stringify({
+      error: data?.error?.message || JSON.stringify(data),
+      _debug: { model, baseURL: baseURL.replace(/\/\/.*@/, "//***@") },
+    })};
+  }
+  return { statusCode: 200, headers, body: JSON.stringify(data) };
 };
