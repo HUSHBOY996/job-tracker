@@ -419,8 +419,8 @@ const AddApplication = ({ setPage }) => {
     if (!aiText.trim()) return;
     setLoading(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:500,
+      const res = await fetch("/.netlify/functions/ai-proxy", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ max_tokens:500,
           system: '从JD文本提取信息，只返回JSON，格式：{"company":string,"position":string,"location":string,"salary":string,"tags":string}',
           messages:[{ role:"user", content:aiText }] }) });
       const data = await res.json();
@@ -685,8 +685,8 @@ const ReviewNew = ({ setPage }) => {
     setLoading(true);
     try {
       const prompt = `公司：${form.company||"未知"}，职位：${form.position||"未知"}。面试描述：${aiText||form.content}。请生成面试复盘，只返回JSON：{"title":"","content":"","improvement":"","tags":"tag1,tag2"}`;
-      const res = await fetch("https://api.anthropic.com/v1/messages", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:800, system:"只返回JSON，不要其他内容", messages:[{role:"user",content:prompt}] }) });
+      const res = await fetch("/.netlify/functions/ai-proxy", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ max_tokens:800, system:"只返回JSON，不要其他内容", messages:[{role:"user",content:prompt}] }) });
       const data = await res.json();
       const json = JSON.parse(data.content?.[0]?.text?.replace(/```json|```/g,"").trim()||"{}");
       setForm(f => ({ ...f, ...json, tags:json.tags||f.tags }));
@@ -734,11 +734,10 @@ const PROCESSED_IDS_KEY = "processedMailIds";
 
 // ── Claude 解析单封邮件 ────────────────────────────────────────────────────────
 const parseEmailWithClaude = async (fullText) => {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/.netlify/functions/ai-proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
       max_tokens: 600,
       system: `你是求职邮件解析助手。只返回 JSON，不输出任何其他文字。
 判断标准：只要邮件涉及求职、招聘、面试、笔试、offer、入职、实习等内容，isJobRelated 就返回 true。
@@ -1418,8 +1417,8 @@ const AIAgent = ({ setPage }) => {
     const newMessages = [...messages, userMsg];
     setMessages(newMessages); setInput(""); setLoading(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", { method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
+      const res = await fetch("/.netlify/functions/ai-proxy", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ max_tokens:1000,
           system:"你是求职AI助手，帮助求职者处理求职事务：解析JD、面试准备、简历优化等。用中文回答，专业友好。",
           messages:newMessages.slice(-10).map(m => ({ role:m.role, content:m.content })) }) });
       const data = await res.json();

@@ -231,15 +231,34 @@ export const handler = async (event) => {
 
   for (const em of rawEmails) {
     try {
-      const result = await parseWithClaude(em.fullText, ANTHROPIC_API_KEY, em.hintJobRelated);
-      if (em.hintJobRelated && !result.isJobRelated) {
-        result.isJobRelated = true;
-        result.confidence = Math.max(result.confidence ?? 0, 0.6);
+      let result;
+
+      if (em.hintJobRelated) {
+        // 含求职关键词 → 调 Claude 精确解析
+        result = await parseWithClaude(em.fullText, ANTHROPIC_API_KEY, true);
+        if (!result.isJobRelated) {
+          result.isJobRelated = true;
+          result.confidence = Math.max(result.confidence ?? 0, 0.6);
+        }
+        if (!result.company) {
+          result.company = extractCompanyFromSubject(em.subject) || "待确认";
+        }
+      } else {
+        // 不含求职关键词 → 跳过 Claude，直接返回"待用户确认"占位
+        result = {
+          isJobRelated:  false,
+          company:       extractCompanyFromSubject(em.subject) || "待确认",
+          position:      "待确认",
+          emailType:     "其他",
+          status:        "已投递",
+          interviewTime: null,
+          location:      null,
+          salary:        null,
+          confidence:    0.2,
+          summary:       "非求职关键词邮件，请手动确认",
+        };
       }
-      // 方案A：company 仍为空时从主题提取兜底
-      if (em.hintJobRelated && !result.company) {
-        result.company = extractCompanyFromSubject(em.subject) || "待确认";
-      }
+
       parseLog.push({
         uid:          em.uid,
         subject:      em.subject,
@@ -250,10 +269,8 @@ export const handler = async (event) => {
         confidence:   result.confidence,
         summary:      result.summary,
       });
-      // 全部返回，由前端用户自行确认/跳过
       parsed.push({ ...result, uid: em.uid, subject: em.subject });
     } catch (e) {
-      // 单封失败不影响整体，记录错误
       parseLog.push({ uid: em.uid, subject: em.subject, error: e.message });
     }
   }
